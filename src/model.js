@@ -1,5 +1,9 @@
 export const MAX_FILES = 30
-export const MAX_BYTES = 50 * 1024 * 1024
+export const MAX_BYTES = 50_000_000
+
+export function withinUploadLimits(files, size) {
+  return files.length < MAX_FILES && files.reduce((total, file) => total + file.size, 0) + size <= MAX_BYTES
+}
 
 export function validDate(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { validateRequirements, requirementStatus, isBlocking, hashBytes, canAssign, validDate } from '../src/model.js'
+import { validateRequirements, requirementStatus, isBlocking, hashBytes, canAssign, validDate, withinUploadLimits, MAX_BYTES } from '../src/model.js'
 const req = { id: 'r1', order: 1, title_en: 'License', title_bn: 'লাইসেন্স', mandatory: true, has_expiry: true }
 const tender = { tender_id: 'UNSEEN-9', title: 'New tender', procuring_entity: 'Office', bidder: 'Company', submission_deadline: '2026-10-20' }
 
@@ -42,4 +42,15 @@ test('hash actual bytes and prevent cross-requirement duplicate assignment', asy
   assert.equal(canAssign('r2', 'c', matches, files), true)
   assert.equal(canAssign('r2', '', matches, files), true)
   assert.equal(canAssign('r2', 'b', {}, files), true)
+})
+
+
+test('upload cap is 30 files and exactly 50,000,000 combined bytes', () => {
+  assert.equal(MAX_BYTES, 50_000_000)
+  assert.equal(withinUploadLimits([], 50_000_000), true)
+  assert.equal(withinUploadLimits([], 50_000_001), false)
+  assert.equal(withinUploadLimits([{ size: 25_000_000 }], 25_000_000), true)
+  assert.equal(withinUploadLimits([{ size: 25_000_000 }], 25_000_001), false)
+  assert.equal(withinUploadLimits(Array.from({ length: 29 }, () => ({ size: 1 })), 1), true)
+  assert.equal(withinUploadLimits(Array.from({ length: 30 }, () => ({ size: 1 })), 1), false)
 })

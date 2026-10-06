@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { messages } from './i18n'
-import { MAX_FILES, MAX_BYTES, validateRequirements, requirementStatus, isBlocking, canAssign } from './model'
+import { withinUploadLimits, validateRequirements, requirementStatus, isBlocking, canAssign } from './model'
 import { readPdf } from './pdfReader'
 import { buildPackage, downloadPackage } from './packagePdf'
 
@@ -47,14 +47,14 @@ export default function App() {
     event.target.value = ''
     if (!incoming.length || processing.current) return
     processing.current = true; setBusy(true); setSuccess(false); setNotices([])
-    const accepted = []; let bytes = totalBytes
+    const accepted = []
     try {
       for (const file of incoming) {
         if (!/\.pdf$/i.test(file.name) || (file.type && !['application/pdf', 'application/x-pdf', 'application/octet-stream'].includes(file.type))) { notify('nonPdf', file.name); continue }
-        if (files.length + accepted.length >= MAX_FILES || bytes + file.size > MAX_BYTES) { notify('limit', file.name); continue }
+        if (!withinUploadLimits([...files, ...accepted], file.size)) { notify('limit', file.name); continue }
         try {
           const document = await readPdf(file)
-          accepted.push(document); bytes += file.size
+          accepted.push(document)
         } catch (error) { notify(['nonPdf', 'noPages'].includes(error.message) ? error.message : 'badPdf', file.name) }
       }
       setFiles(old => [...old, ...accepted])
@@ -93,11 +93,11 @@ export default function App() {
         {dataset && <><dl className="tender-details">{[['tenderId', 'tender_id'], ['title', 'title'], ['entity', 'procuring_entity'], ['bidder', 'bidder'], ['deadline', 'submission_deadline']].map(([label, key]) => <div key={key}><dt>{t[label]}</dt><dd>{dataset.tender[key]}</dd></div>)}</dl><p className="small">{t.changeHelp}</p></>}
       </section>
       <section id="step-2" className="card"><div className="section-head"><div><div className="step-label">{number(2)} / {t.step2}</div><h2>{t.uploadTitle}</h2><p>{t.uploadHelp}</p></div><label className={`button secondary ${disabled ? 'disabled' : ''}`}>{t.choosePdfs}<input aria-label={t.choosePdfs} type="file" accept=".pdf,application/pdf" multiple disabled={disabled} onChange={upload} /></label></div>
-        <div className="tray-meta"><span>{number(files.length)} / {number(30)} {t.files}</span><span>{number(totalBytes / (1024 * 1024))} / {number(50)} {language === 'bn' ? 'এমবি' : 'MB'}</span>{busy && <span role="status">{t.reading}</span>}</div>
+        <div className="tray-meta"><span>{number(files.length)} / {number(30)} {t.files}</span><span>{number(totalBytes / 1_000_000)} / {number(50)} {language === 'bn' ? 'এমবি' : 'MB'}</span>{busy && <span role="status">{t.reading}</span>}</div>
         {!files.length ? <div className="empty"><span aria-hidden="true">▤</span><p>{t.emptyFiles}</p></div> : <ul className="file-list">{files.map(file => {
           const duplicate = files.filter(other => other.hash === file.hash).length > 1
           const assigned = Object.values(matches).some(match => byId[match.fileId]?.hash === file.hash)
-          return <li key={file.id}><span className="pdf-icon" aria-hidden="true">PDF</span><div className="file-info"><strong>{file.name}</strong><span>{number(file.pages)} {file.pages === 1 ? t.page : t.pages} · {number(file.size / 1024)} {language === 'bn' ? 'কেবি' : 'KB'}</span></div><div className="file-tags">{duplicate && <span className="tag duplicate">{t.duplicate}</span>}<span className="tag">{assigned ? t.assigned : t.available}</span></div><button className="text-button danger" disabled={disabled} onClick={() => remove(file.id)} aria-label={`${t.remove}: ${file.name}`}>{t.remove}</button></li>
+          return <li key={file.id}><span className="pdf-icon" aria-hidden="true">PDF</span><div className="file-info"><strong>{file.name}</strong><span>{number(file.pages)} {file.pages === 1 ? t.page : t.pages} · {number(file.size / 1_000)} {language === 'bn' ? 'কেবি' : 'KB'}</span></div><div className="file-tags">{duplicate && <span className="tag duplicate">{t.duplicate}</span>}<span className="tag">{assigned ? t.assigned : t.available}</span></div><button className="text-button danger" disabled={disabled} onClick={() => remove(file.id)} aria-label={`${t.remove}: ${file.name}`}>{t.remove}</button></li>
         })}</ul>}
       </section>
       <section id="step-3" className="card"><div className="step-label">{number(3)} / {t.step3}</div><h2>{t.matchTitle}</h2><p>{t.matchHelp}</p>

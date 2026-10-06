@@ -1,8 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
-import { PDFDocument, StandardFonts, degrees } from 'pdf-lib'
-import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
+import { PDFDocument, PDFName, PDFNumber, StandardFonts, degrees } from 'pdf-lib'
+import { getDocument, Util } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import { buildPackage } from '../src/packagePdf.js'
 
 const fontBytes = await Promise.all(['NotoSans-Regular.ttf', 'NotoSansBengali-Regular.ttf'].map(name => readFile(new URL(`../public/fonts/${name}`, import.meta.url))))
@@ -60,12 +60,68 @@ test('rotated source pages preserve content and get upright independent footers'
     const bytes = await buildPackage({ tender, requirements: [requirement('R', 1)] }, [{ id: 'f', hash: 'f', pages: 1, bytes: await source(['ROTATED'], rotation) }], { R: { fileId: 'f' } }, { fontBytes })
     const pdf = await PDFDocument.load(bytes)
     const page = pdf.getPage(1)
-    assert.equal(page.getRotation().angle, 0)
-    assert.equal(page.getHeight(), (rotation % 180 ? 240 : 320) + 36)
+    assert.equal(page.getRotation().angle, rotation)
+    const crop = page.getCropBox()
+    assert.equal(rotation % 180 ? crop.width : crop.height, (rotation % 180 ? 240 : 320) + 36)
     const items = (await textPages(bytes))[1]
     assert.ok(items.some(item => item.str === 'ROTATED'))
     assert.ok(items.some(item => item.str === `${tender.tender_id} | Page 2 of 2`))
+    await assertFooterGeometry(bytes, 2, `${tender.tender_id} | Page 2 of 2`)
   }
+})
+
+async function assertFooterGeometry(bytes, pageNumber, label) {
+  const task = getDocument({ data: new Uint8Array(bytes), useSystemFonts: true })
+  try {
+    const pdf = await task.promise, page = await pdf.getPage(pageNumber)
+    const viewport = page.getViewport({ scale: 1 })
+    const item = (await page.getTextContent()).items.find(item => item.str === label)
+    assert.ok(item, 'footer exists')
+    const rendered = Util.transform(viewport.transform, item.transform)
+    assert.ok(Math.abs(rendered[1]) < 0.0001, 'footer baseline is horizontal in viewer')
+    assert.ok(rendered[0] > 0, 'footer reads left to right in viewer')
+    assert.ok(Math.abs(viewport.height - rendered[5] - 13) < 0.0001, 'footer baseline is 13 physical points above bottom')
+  } finally { await task.destroy() }
+}
+
+test('blank pages and annotation-only pages are retained without generation failure', async () => {
+  const doc = await PDFDocument.create()
+  doc.addPage([240, 320])
+  const annotated = doc.addPage([240, 320])
+  const note = doc.context.obj({ Type: 'Annot', Subtype: 'FreeText', Rect: [20, 100, 200, 150], Contents: 'IMPORTANT ANNOTATION', DA: '/Helv 12 Tf 0 g', F: 4 })
+  annotated.node.set(PDFName.of('Annots'), doc.context.obj([doc.context.register(note)]))
+  const bytes = await buildPackage({ tender, requirements: [requirement('A', 1)] }, [{ id: 'f', hash: 'f', pages: 2, bytes: await doc.save() }], { A: { fileId: 'f' } }, { fontBytes })
+  const output = await PDFDocument.load(bytes)
+  assert.equal(output.getPageCount(), 3)
+  assert.equal(output.getPage(2).node.Annots().size(), 1)
+  const copied = output.context.lookup(output.getPage(2).node.Annots().get(0))
+  assert.equal(copied.lookup(PDFName.of('Contents')).decodeText(), 'IMPORTANT ANNOTATION')
+  await assertFooterGeometry(bytes, 2, `${tender.tender_id} | Page 2 of 3`)
+  await assertFooterGeometry(bytes, 3, `${tender.tender_id} | Page 3 of 3`)
+})
+
+test('nonzero crop origins and scaled UserUnit keep readable footer geometry', async () => {
+  for (const rotation of [0, 90, 180, 270]) {
+    const doc = await PDFDocument.create()
+    const page = doc.addPage([400, 500])
+    page.setCropBox(40, 60, 240, 320)
+    page.setRotation(degrees(rotation))
+    page.node.set(PDFName.of('UserUnit'), PDFNumber.of(2))
+    page.drawText('VISIBLE CONTENT', { x: 50, y: 80, size: 12 })
+    const bytes = await buildPackage({ tender, requirements: [requirement('A', 1)] }, [{ id: 'f', hash: 'f', pages: 1, bytes: await doc.save() }], { A: { fileId: 'f' } }, { fontBytes })
+    await assertFooterGeometry(bytes, 2, `${tender.tender_id} | Page 2 of 2`)
+    const result = await PDFDocument.load(bytes)
+    assert.equal(result.getPage(1).node.lookup(PDFName.of('UserUnit'), PDFNumber).asNumber(), 2)
+  }
+})
+
+test('filled form values survive copying as visible flattened text', async () => {
+  const doc = await PDFDocument.create(), page = doc.addPage([400, 500])
+  const field = doc.getForm().createTextField('bidder')
+  field.setText('FILLED BIDDER VALUE')
+  field.addToPage(page, { x: 30, y: 80, width: 300, height: 30 })
+  const bytes = await buildPackage({ tender, requirements: [requirement('A', 1)] }, [{ id: 'f', hash: 'f', pages: 1, bytes: await doc.save() }], { A: { fileId: 'f' } }, { fontBytes })
+  assert.ok((await textPages(bytes))[1].some(item => item.str === 'FILLED BIDDER VALUE'))
 })
 
 test('generator rejects blocking states and duplicate content even if called directly', async () => {

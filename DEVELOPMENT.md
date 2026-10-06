@@ -25,7 +25,7 @@ any static HTTPS host. The PDF.js worker and PDF fonts are bundled locally.
 1. Choose the tender's requirements.json. Replacing a tender clears matches and
    expiry dates while retaining uploaded PDFs. Invalid JSON leaves the current
    tender unchanged.
-2. Add PDFs, individually or together (30 files, 50 MiB total). Remove unwanted
+2. Add PDFs, individually or together (30 files, 50 MB / 50,000,000 bytes total). Remove unwanted
    copies. Non-PDF, damaged and encrypted PDFs receive a readable error.
 3. Select a PDF for each requirement. Choosing the empty option undoes a match.
    Changing a file resets its expiry, so an old file's date cannot silently carry
@@ -78,10 +78,14 @@ checks it again. Duplicate copies remain visible and removable in the file tray.
 The cover is always page 1 and English. It includes all five tender fields,
 the browser's local package date, and the included requirement names in numeric
 order. Long text wraps; exceptionally long lists use a taller single cover.
-Unmatched optional requirements are skipped. Every source page is embedded,
-in original order and at its original visible size, with rotation normalized.
+Unmatched optional requirements are skipped. Every source page is copied directly,
+in original order, retaining its original contents, annotations, rotation, crop
+origin and physical page units. Original content is clipped to its original
+visible bounds before the page is extended.
 Filled form appearances are flattened before embedding. Each source page gets
-an additional 36-point bottom strip rather than drawing over its contents.
+an additional 36-point bottom strip in displayed coordinates, rather than drawing
+over its contents. Footers remain upright and 9 physical points regardless of
+source rotation or UserUnit.
 The cover also reserves this strip. The footer on every page is exactly
 `<tender_id> | Page X of Y`; the filename is exactly `<tender_id>_Package.pdf`.
 Local Noto fonts support English and Bangla metadata without remote requests;
@@ -92,7 +96,9 @@ unsupported glyphs produce an error rather than silently changing text.
 `npm test` exercises all status branches, same-day expiry, schema and ordering,
 content hashes, duplicate assignment, generator safeguards, cover metadata,
 all original page order, exact per-page footers, source-bottom separation,
-all four page rotations, and long cover lists.
+all four page rotations, nonzero crop origins, UserUnit scaling, blank pages,
+annotation-only pages, filled forms, exact upload boundaries, bilingual string
+parity, and long cover lists.
 
 A headless Chromium smoke test was also run against the supplied pack: ten
 readable PDFs, PNG rejection, duplicate marks, one-to-one assignment, expiry
