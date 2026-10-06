@@ -10,7 +10,7 @@ A frontend-only web application developed for the **AI DevFest 2026 Vibe-Coding 
 
 ## Live Website
 
-**Live URL:** 
+**Live URL:** https://devfest-vc221.vercel.app/ 
 
 ## About the Project
 
