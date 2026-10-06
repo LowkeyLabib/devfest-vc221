@@ -139,3 +139,39 @@ test('long requirement lists remain complete on the single first cover page', as
   assert.ok(pages[0].some(item => item.str.includes('Document R54')))
   assert.ok(pages[0].some(item => item.str === `${tender.tender_id} | Page 1 of 56`))
 })
+
+test('enabled index is page 2, has exact multipage start numbers, and every page gets the new total', async () => {
+  const files = [
+    { id: 'a', hash: 'a', pages: 2, bytes: await source(['INDEX-A-FIRST', 'INDEX-A-SECOND']) },
+    { id: 'b', hash: 'b', pages: 1, bytes: await source(['INDEX-B-FIRST']) },
+  ]
+  const dataset = { tender, requirements: [requirement('B', 10), requirement('omitted', 3, false), requirement('A', 2)] }
+  const bytes = await buildPackage(dataset, files, { A: { fileId: 'a' }, B: { fileId: 'b' } }, { fontBytes, includeIndex: true })
+  const pages = await textPages(bytes)
+  assert.equal(pages.length, 5)
+  assert.ok(pages[0].some(item => item.str === 'TENDER DOCUMENT PACKAGE'))
+  assert.ok(pages[1].some(item => item.str === 'DOCUMENT INDEX'))
+  for (const [title, start] of [['2. Document A', '3'], ['10. Document B', '5']]) {
+    const row = pages[1].find(item => item.str === title)
+    const number = pages[1].find(item => item.str === start)
+    assert.ok(row && number)
+    assert.equal(row.transform[5], number.transform[5])
+  }
+  assert.ok(!pages[1].some(item => item.str.includes('omitted')))
+  assert.ok(pages[2].some(item => item.str === 'INDEX-A-FIRST'))
+  assert.ok(pages[3].some(item => item.str === 'INDEX-A-SECOND'))
+  assert.ok(pages[4].some(item => item.str === 'INDEX-B-FIRST'))
+  pages.forEach((items, index) => assert.ok(items.some(item => item.str === `${tender.tender_id} | Page ${index + 1} of 5`)))
+  await assertFooterGeometry(bytes, 2, `${tender.tender_id} | Page 2 of 5`)
+})
+
+test('optional Bangla rendering failure falls back to English index without changing mandatory output', async () => {
+  let fallback = 0
+  const bytes = await buildPackage({ tender, requirements: [requirement('R', 1)] }, [{ id: 'f', hash: 'f', pages: 1, bytes: await source(['FALLBACK']) }], { R: { fileId: 'f' } }, { fontBytes, includeIndex: true, language: 'bn', onIndexFallback: () => { fallback++ } })
+  const pages = await textPages(bytes)
+  assert.equal(fallback, 1) // Node has no browser FontFace; Chrome coverage is a browser smoke test.
+  assert.equal(pages.length, 3)
+  assert.ok(pages[1].some(item => item.str === '1. Document R'))
+  assert.ok(pages[2].some(item => item.str === 'FALLBACK'))
+  pages.forEach((items, index) => assert.ok(items.some(item => item.str === `${tender.tender_id} | Page ${index + 1} of 3`)))
+})

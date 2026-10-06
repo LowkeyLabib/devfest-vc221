@@ -104,7 +104,15 @@ screenshots/
 
 ## Bonus Features
 
-None. Development prioritized correctness and completion of all mandatory requirements.
+- Conservative filename-based auto-match (manual review remains available).
+- Checklist CSV export, including every requirement and its current status.
+- Local project ZIP export/import with original PDFs, matches, dates and settings.
+- Friendly, distinct errors for corrupt and password-protected PDFs.
+- Optional document index after the English cover, enabled by default.
+- Locally rendered Bangla titles on the index when Bangla is selected.
+
+The index can be switched off to keep the original mandatory package layout.
+See [BONUS_FEATURES.md](BONUS_FEATURES.md) for behavior, limitations and validation.
 
 ## Known Problems
 

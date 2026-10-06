@@ -3,6 +3,9 @@ import { messages } from './i18n'
 import { withinUploadLimits, validateRequirements, requirementStatus, isBlocking, canAssign } from './model'
 import { readPdf } from './pdfReader'
 import { buildPackage, downloadPackage } from './packagePdf'
+import { autoMatch, checklistCsv } from './bonuses'
+import { exportProject, importProject, MAX_PROJECT_BYTES } from './project'
+import { downloadFile } from './downloads'
 
 const symbols = { missing: '!', expiryNeeded: '!', expired: '!', notProvided: '–', ok: '✓' }
 
@@ -15,11 +18,12 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [success, setSuccess] = useState(false)
+  const [includeIndex, setIncludeIndex] = useState(true)
   const processing = useRef(false)
   const t = messages[language]
   const number = value => new Intl.NumberFormat(language === 'bn' ? 'bn-BD' : 'en-US', { maximumFractionDigits: 1 }).format(value)
   useEffect(() => { document.documentElement.lang = language }, [language])
-  const notify = (code, name = '') => setNotices(old => [...old, { code, name }])
+  const notify = (code, name = '', count) => setNotices(old => [...old, { code, name, count }])
   const byId = Object.fromEntries(files.map(file => [file.id, file]))
   const rows = dataset?.requirements.map(r => ({ r, file: byId[matches[r.id]?.fileId], status: requirementStatus(r, byId[matches[r.id]?.fileId], matches[r.id]?.expiry, dataset.tender.submission_deadline) })) || []
   const blockers = rows.filter(row => isBlocking(row.status))
@@ -55,7 +59,7 @@ export default function App() {
         try {
           const document = await readPdf(file)
           accepted.push(document)
-        } catch (error) { notify(['nonPdf', 'noPages'].includes(error.message) ? error.message : 'badPdf', file.name) }
+        } catch (error) { notify(['nonPdf', 'noPages', 'protectedPdf', 'unreadablePdf'].includes(error.message) ? error.message : 'badPdf', file.name) }
       }
       setFiles(old => [...old, ...accepted])
     } finally { processing.current = false; setBusy(false) }
@@ -71,11 +75,47 @@ export default function App() {
     setMatches(old => Object.fromEntries(Object.entries(old).filter(([, match]) => match.fileId !== id)))
     setSuccess(false)
   }
+  function matchAutomatically() {
+    if (!dataset || processing.current) return
+    const result = autoMatch(dataset.requirements, files, matches)
+    setMatches(result.matches); setSuccess(false)
+    notify('autoMatchComplete', '', result.count)
+  }
+  function exportChecklist() {
+    if (!dataset || processing.current) return
+    downloadFile(checklistCsv(dataset, files, matches, language), 'text/csv;charset=utf-8', `${dataset.tender.tender_id}_Checklist.csv`)
+    notify('csvExported')
+  }
+  async function saveProject() {
+    if (!dataset || processing.current) return
+    processing.current = true; setBusy(true)
+    try {
+      const bytes = exportProject({ dataset, files, matches, language, includeIndex })
+      downloadFile(bytes, 'application/zip', `${dataset.tender.tender_id}_Project.zip`)
+      notify('projectExported')
+    } catch (error) { notify(error.message === 'projectTooLarge' ? error.message : 'projectInvalid') }
+    finally { processing.current = false; setBusy(false) }
+  }
+  async function reopenProject(event) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file || processing.current) return
+    processing.current = true; setBusy(true)
+    try {
+      if (file.size > MAX_PROJECT_BYTES) throw new Error('projectTooLarge')
+      const restored = await importProject(await file.arrayBuffer(), readPdf)
+      setDataset(restored.dataset); setFiles(restored.files); setMatches(restored.matches)
+      setLanguage(restored.language); setIncludeIndex(restored.includeIndex)
+      setSuccess(false); setNotices([{ code: 'projectImported', name: '' }])
+    } catch (error) { notify(['projectTooLarge', 'projectPdfError'].includes(error.message) ? error.message : 'projectInvalid', file.name) }
+    finally { processing.current = false; setBusy(false) }
+  }
+
   async function generate() {
     if (!dataset || blockers.length || processing.current) return
     processing.current = true; setGenerating(true); setSuccess(false); setNotices([])
     try {
-      const bytes = await buildPackage(dataset, files, matches)
+      const bytes = await buildPackage(dataset, files, matches, { includeIndex, language, onIndexFallback: () => notify('banglaIndexFallback') })
       downloadPackage(bytes, dataset.tender.tender_id); setSuccess(true)
     } catch (error) { notify(messages.en[error.message] ? error.message : 'generationError') }
     finally { processing.current = false; setGenerating(false) }
@@ -88,9 +128,10 @@ export default function App() {
     <main>
       <section className="hero"><div className="eyebrow"><span aria-hidden="true">◈</span> {t.privacy}</div><h1>{t.heading}</h1><p>{t.intro}</p></section>
       <nav className="steps" aria-label={t.intro}>{['step1', 'step2', 'step3', 'step4'].map((key, i) => <a href={`#step-${i + 1}`} key={key}><span>{number(i + 1)}</span>{t[key]}</a>)}</nav>
-      {notices.length > 0 && <section className="notice" role="alert"><div className="section-head"><strong>{t.notices}</strong><button className="text-button" onClick={() => setNotices([])}>{t.dismiss}</button></div><ul>{notices.map((notice, i) => <li key={i}>{notice.name && <strong>{notice.name}: </strong>}{t[notice.code]}</li>)}</ul></section>}
+      {notices.length > 0 && <section className="notice" role="alert"><div className="section-head"><strong>{t.notices}</strong><button className="text-button" onClick={() => setNotices([])}>{t.dismiss}</button></div><ul>{notices.map((notice, i) => <li key={i}>{notice.name && <strong>{notice.name}: </strong>}{t[notice.code].replace('{count}', number(notice.count ?? 0))}</li>)}</ul></section>}
       <section id="step-1" className="card"><div className="section-head"><div><div className="step-label">{number(1)} / {t.step1}</div><h2>{t.loadTitle}</h2><p>{t.loadHelp}</p></div><label className={`button ${disabled ? 'disabled' : ''}`}>{dataset ? t.replaceJson : t.chooseJson}<input aria-label={t.chooseJson} type="file" accept=".json,application/json" disabled={disabled} onChange={loadJson} /></label></div>
         {dataset && <><dl className="tender-details">{[['tenderId', 'tender_id'], ['title', 'title'], ['entity', 'procuring_entity'], ['bidder', 'bidder'], ['deadline', 'submission_deadline']].map(([label, key]) => <div key={key}><dt>{t[label]}</dt><dd>{dataset.tender[key]}</dd></div>)}</dl><p className="small">{t.changeHelp}</p></>}
+        <div className="workspace-tools"><div className="button-row"><button className="button secondary" disabled={!dataset || disabled} onClick={saveProject}>{t.exportProject}</button><label className={`button secondary ${disabled ? 'disabled' : ''}`}>{t.importProject}<input aria-label={t.importProject} type="file" accept=".zip,application/zip" disabled={disabled} onChange={reopenProject} /></label></div><p className="small">{t.projectHelp}</p></div>
       </section>
       <section id="step-2" className="card"><div className="section-head"><div><div className="step-label">{number(2)} / {t.step2}</div><h2>{t.uploadTitle}</h2><p>{t.uploadHelp}</p></div><label className={`button secondary ${disabled ? 'disabled' : ''}`}>{t.choosePdfs}<input aria-label={t.choosePdfs} type="file" accept=".pdf,application/pdf" multiple disabled={disabled} onChange={upload} /></label></div>
         <div className="tray-meta"><span>{number(files.length)} / {number(30)} {t.files}</span><span>{number(totalBytes / 1_000_000)} / {number(50)} {language === 'bn' ? 'এমবি' : 'MB'}</span>{busy && <span role="status">{t.reading}</span>}</div>
@@ -100,7 +141,7 @@ export default function App() {
           return <li key={file.id}><span className="pdf-icon" aria-hidden="true">PDF</span><div className="file-info"><strong>{file.name}</strong><span>{number(file.pages)} {file.pages === 1 ? t.page : t.pages} · {number(file.size / 1_000)} {language === 'bn' ? 'কেবি' : 'KB'}</span></div><div className="file-tags">{duplicate && <span className="tag duplicate">{t.duplicate}</span>}<span className="tag">{assigned ? t.assigned : t.available}</span></div><button className="text-button danger" disabled={disabled} onClick={() => remove(file.id)} aria-label={`${t.remove}: ${file.name}`}>{t.remove}</button></li>
         })}</ul>}
       </section>
-      <section id="step-3" className="card"><div className="step-label">{number(3)} / {t.step3}</div><h2>{t.matchTitle}</h2><p>{t.matchHelp}</p>
+      <section id="step-3" className="card"><div className="section-head"><div><div className="step-label">{number(3)} / {t.step3}</div><h2>{t.matchTitle}</h2><p>{t.matchHelp}</p></div><div className="button-row compact-tools"><button className="button secondary" disabled={!dataset || !files.length || disabled} onClick={matchAutomatically}>{t.autoMatch}</button><button className="button secondary" disabled={!dataset || disabled} onClick={exportChecklist}>{t.exportCsv}</button></div></div><p className="small bonus-hint">{t.autoMatchHelp}</p>
         {!dataset ? <div className="empty"><p>{t.loadFirst}</p></div> : <div className="requirements">{rows.map(({ r, file, status }) => <article className="requirement" key={r.id}>
           <div className="requirement-heading"><span className="order">{number(r.order)}</span><div><h3>{r[language === 'bn' ? 'title_bn' : 'title_en']}</h3><span className="small">{r.mandatory ? t.mandatory : t.optional} · {r.id}</span></div><div className={`status ${status}`}><span aria-hidden="true">{symbols[status]}</span><div>{t[status]}<small>{isBlocking(status) ? t.blocking : t.nonBlocking}</small></div></div></div>
           <div className="match-fields"><label>{t.select}<select aria-label={`${t.select}: ${r[language === 'bn' ? 'title_bn' : 'title_en']}`} disabled={disabled} value={matches[r.id]?.fileId || ''} onChange={e => assign(r, e.target.value)}><option value="">{t.noMatch}</option>{files.map(f => { const allowed = canAssign(r.id, f.id, matches, files); return <option key={f.id} value={f.id} disabled={!allowed}>{f.name}{!allowed ? ` — ${t.used}` : ''}</option> })}</select></label>
@@ -108,7 +149,8 @@ export default function App() {
         </article>)}</div>}
       </section>
       <section id="step-4" className="card generate-card"><div className="step-label">{number(4)} / {t.step4}</div><h2>{t.generateTitle}</h2><p>{t.generateHelp}</p>
-        {dataset && <div className="package-stats"><span><strong>{number(included.length)}</strong> {t.included}</span><span><strong>{number(1 + included.reduce((sum, row) => sum + row.file.pages, 0))}</strong> {t.totalPages}</span></div>}
+        {dataset && <div className="package-stats"><span><strong>{number(included.length)}</strong> {t.included}</span><span><strong>{number(1 + (includeIndex ? 1 : 0) + included.reduce((sum, row) => sum + row.file.pages, 0))}</strong> {includeIndex ? t.totalPagesWithIndex : t.totalPages}</span></div>}
+        <label className="index-option"><input type="checkbox" checked={includeIndex} disabled={disabled} onChange={event => { setIncludeIndex(event.target.checked); setSuccess(false) }} />{t.includeIndex}</label><p className="small">{t.indexHelp}</p>
         <div id="generation-reason" aria-live="polite">{!dataset ? <p>{t.loadFirst}</p> : blockers.length ? <div className="blocking-summary"><strong>{t.blockers}</strong><ul>{blockers.map(({ r, status }) => <li key={r.id}>{r[language === 'bn' ? 'title_bn' : 'title_en']} — {t[status]}</li>)}</ul></div> : <p className="ready">✓ {t.ready}</p>}{busy && <p>{t.busy}</p>}</div>
         <button className="button generate-button" disabled={!dataset || blockers.length > 0 || disabled} aria-describedby="generation-reason" onClick={generate}>{generating ? t.generating : t.generate}<span aria-hidden="true"> ↓</span></button>
         {success && <p role="status" className="ready">✓ {t.success}</p>}

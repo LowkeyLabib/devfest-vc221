@@ -1,5 +1,13 @@
 export const messages = {
   en: {
+
+    autoMatch: 'Auto-match', autoMatchHelp: 'Only clear filename matches are assigned. Ambiguous versions stay unmatched; review every result.', autoMatchComplete: '{count} documents matched. Review selections and enter any expiry dates.',
+    exportCsv: 'Export Checklist CSV', csvExported: 'Checklist downloaded. It includes every requirement and its current status.',
+    exportProject: 'Export Project', importProject: 'Import Project', projectHelp: 'Save a local ZIP with your PDFs, tender, matches, expiry dates and settings. Importing replaces this workspace only after the entire project is verified.',
+    projectExported: 'Project downloaded with all original PDFs. Keep the ZIP to reopen your work.', projectImported: 'Project restored, including PDFs, matches and expiry dates.',
+    projectInvalid: 'This is not a valid Tender Desk project, or its matches are inconsistent. Your current work was kept.', projectTooLarge: 'Project exceeds the supported limits: 30 PDFs and 50 MB of PDF data. Your current work was kept.', projectPdfError: 'A PDF inside this project is damaged, protected or unreadable. Your current work was kept.',
+    protectedPdf: 'This PDF is password-protected. Save an unlocked copy and add it again.', unreadablePdf: 'The browser could not read this file. Reselect a readable local copy.',
+    includeIndex: 'Include document index after the cover', indexHelp: 'Shows exact starting page numbers. Bangla titles are used on the index when Bangla is selected; the cover stays English.', totalPagesWithIndex: 'total pages, including cover and index', banglaIndexFallback: 'Bangla index text could not be rendered. English titles were used; all documents and page numbers are unchanged.',
     brand: 'Tender desk', privacy: 'Private by design · Files stay in your browser',
     heading: 'Build a submission you can trust.', intro: 'Load your tender, check the documents, and download one correctly ordered PDF.',
     step1: 'Load tender', step2: 'Upload PDFs', step3: 'Match & check', step4: 'Make package',
@@ -21,6 +29,14 @@ export const messages = {
     language: 'Language', status: 'Status', order: 'Order', footerNote: 'No upload. No account. No external document processing.',
   },
   bn: {
+
+    autoMatch: 'স্বয়ংক্রিয়ভাবে মেলান', autoMatchHelp: 'শুধু নিশ্চিত ফাইলনামের মিল বাছাই হয়। অস্পষ্ট সংস্করণ বাছাই হয় না; প্রতিটি মিল যাচাই করুন।', autoMatchComplete: '{count}টি নথি মেলানো হয়েছে। বাছাই যাচাই করুন এবং প্রয়োজনীয় মেয়াদের তারিখ দিন।',
+    exportCsv: 'চেকলিস্ট CSV ডাউনলোড', csvExported: 'চেকলিস্ট ডাউনলোড হয়েছে। এতে প্রতিটি চাহিদা ও বর্তমান অবস্থা রয়েছে।',
+    exportProject: 'প্রকল্প সংরক্ষণ করুন', importProject: 'প্রকল্প খুলুন', projectHelp: 'পিডিএফ, দরপত্র, মিল, মেয়াদের তারিখ ও সেটিংসসহ একটি স্থানীয় ZIP সংরক্ষণ করুন। পুরো প্রকল্প যাচাই সফল হলেই বর্তমান কাজ প্রতিস্থাপন হবে।',
+    projectExported: 'মূল সব পিডিএফসহ প্রকল্প ডাউনলোড হয়েছে। কাজ আবার খুলতে ZIP ফাইলটি রাখুন।', projectImported: 'পিডিএফ, মিল ও মেয়াদের তারিখসহ প্রকল্প খোলা হয়েছে।',
+    projectInvalid: 'এটি সঠিক দরপত্র ডেস্ক প্রকল্প নয় বা মিলগুলো অসংগত। আপনার বর্তমান কাজ রাখা হয়েছে।', projectTooLarge: 'প্রকল্পের সীমা অতিক্রম করেছে: সর্বোচ্চ ৩০টি পিডিএফ এবং মোট ৫০ এমবি পিডিএফ ডেটা। বর্তমান কাজ রাখা হয়েছে।', projectPdfError: 'প্রকল্পের একটি পিডিএফ ক্ষতিগ্রস্ত, সুরক্ষিত বা পড়া যাচ্ছে না। বর্তমান কাজ রাখা হয়েছে।',
+    protectedPdf: 'এই পিডিএফ পাসওয়ার্ড সুরক্ষিত। পাসওয়ার্ড ছাড়া একটি কপি সংরক্ষণ করে আবার যোগ করুন।', unreadablePdf: 'ব্রাউজার ফাইলটি পড়তে পারেনি। পড়া যায় এমন স্থানীয় কপি আবার বেছে নিন।',
+    includeIndex: 'প্রচ্ছদের পরে নথির সূচি যোগ করুন', indexHelp: 'প্রতিটি নথির শুরুর সঠিক পৃষ্ঠা দেখায়। বাংলা বাছাই করলে সূচিতে বাংলা শিরোনাম থাকবে; প্রচ্ছদ ইংরেজিতেই থাকবে।', totalPagesWithIndex: 'প্রচ্ছদ ও সূচিসহ মোট পৃষ্ঠা', banglaIndexFallback: 'সূচির বাংলা লেখা তৈরি করা যায়নি। ইংরেজি শিরোনাম ব্যবহার করা হয়েছে; সব নথি ও পৃষ্ঠা নম্বর অপরিবর্তিত আছে।',
     brand: 'দরপত্র ডেস্ক', privacy: 'গোপনীয়তা সুরক্ষিত · ফাইল আপনার ব্রাউজারেই থাকে',
     heading: 'নির্ভরযোগ্য দরপত্র প্যাকেজ তৈরি করুন।', intro: 'দরপত্র খুলুন, নথি যাচাই করুন এবং সঠিক ক্রমে একটি পিডিএফ ডাউনলোড করুন।',
     step1: 'দরপত্র খুলুন', step2: 'পিডিএফ যোগ করুন', step3: 'মিলিয়ে যাচাই করুন', step4: 'প্যাকেজ তৈরি করুন',

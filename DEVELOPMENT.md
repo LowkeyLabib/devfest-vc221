@@ -32,7 +32,8 @@ any static HTTPS host. The PDF.js worker and PDF fonts are bundled locally.
    over. For expiry-bearing documents, enter the date printed on the document.
 4. Resolve every blocking status, then generate and download the package.
    Expiry dates are user-entered; the app does not read dates from document text.
-   A reload clears the workspace.
+   A reload clears the workspace unless you export a project ZIP first; import
+   that ZIP to restore all uploaded PDFs and the checklist.
 
 ## JSON format
 
@@ -105,4 +106,7 @@ readable PDFs, PNG rejection, duplicate marks, one-to-one assignment, expiry
 transitions, a 16-page download with the exact filename and footers,
 English/Bangla controls, mobile layout, removal, invalid JSON and damaged PDFs.
 The supplied pack is used only as an external test fixture, not application data.
-No bonus features, automatic commits, pushes, or deployment are implemented.
+The bonus batch adds conservative auto-match, CSV export, local project ZIP
+export/import, an optional index and locally rendered Bangla index titles.
+See BONUS_FEATURES.md for details. No automatic commits, pushes or deployment
+are implemented.

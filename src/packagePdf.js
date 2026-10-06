@@ -1,6 +1,8 @@
 import { PDFDocument, PDFName, PDFNumber, rgb, degrees } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
 import { requirementStatus, isBlocking, canAssign, localDate } from './model.js'
+import { packageIndex } from './bonuses.js'
+import { banglaIndexImages } from './banglaIndex.js'
 
 const MARGIN = 40
 const FOOTER = 36
@@ -16,7 +18,7 @@ async function loadFonts() {
 }
 
 // Optional font bytes let the same browser generation code be tested without a server.
-export async function buildPackage(dataset, files, matches, { madeOn = localDate(), fontBytes } = {}) {
+export async function buildPackage(dataset, files, matches, { madeOn = localDate(), fontBytes, includeIndex = false, language = 'en', onIndexFallback } = {}) {
   const included = dataset.requirements.filter(r => matches[r.id]?.fileId).sort((a, b) => a.order - b.order)
   for (const r of dataset.requirements) {
     const match = matches[r.id]
@@ -27,7 +29,8 @@ export async function buildPackage(dataset, files, matches, { madeOn = localDate
   }
   const output = await PDFDocument.create()
   output.registerFontkit(fontkit)
-  const fonts = await Promise.all((fontBytes || await loadFonts()).map(bytes => output.embedFont(bytes, { subset: true })))
+  const localFonts = fontBytes || await loadFonts()
+  const fonts = await Promise.all(localFonts.map(bytes => output.embedFont(bytes, { subset: true })))
   const charsets = fonts.map(font => new Set(font.getCharacterSet()))
   const fontFor = char => {
     const index = charsets.findIndex(set => set.has(char.codePointAt(0)))
@@ -71,7 +74,7 @@ export async function buildPackage(dataset, files, matches, { madeOn = localDate
 
   const t = dataset.tender
   // Reserve enough width for a readable exact footer even for long tender IDs.
-  const totalPages = 1 + included.reduce((sum, r) => sum + files.find(f => f.id === matches[r.id].fileId).pages, 0)
+  const totalPages = 1 + (includeIndex ? 1 : 0) + included.reduce((sum, r) => sum + files.find(f => f.id === matches[r.id].fileId).pages, 0)
   const footerWidth = textWidth(`${t.tender_id} | Page ${totalPages} of ${totalPages}`, 9) + 48
   const coverWidth = Math.max(595.28, footerWidth)
   const lines = []
@@ -95,10 +98,42 @@ export async function buildPackage(dataset, files, matches, { madeOn = localDate
   let y = coverHeight - MARGIN
   for (const line of lines) { y -= line.size * 1.5; draw(cover, line.text, MARGIN, y, line.size); y -= line.after }
 
+  if (includeIndex) {
+    const entries = packageIndex(dataset.requirements, files, matches, true)
+    const titleWidth = coverWidth - MARGIN * 2 - 85
+    let banglaImages
+    if (language === 'bn') {
+      try { banglaImages = await banglaIndexImages(entries, localFonts[1], titleWidth) }
+      catch { onIndexFallback?.() } // Optional rendering must never break mandatory generation.
+    }
+    const indexRows = entries.map((entry, i) => {
+      const image = banglaImages?.[i]
+      const titleLines = image ? [] : wrap(`${entry.requirement.order}. ${entry.requirement.title_en}`, 12, titleWidth)
+      const height = image ? image.height : titleLines.length * 18
+      return { ...entry, image, titleLines, height }
+    })
+    const indexHeight = Math.max(841.89, MARGIN * 2 + FOOTER + 100 + indexRows.reduce((sum, row) => sum + row.height + 14, 0))
+    const index = output.addPage([coverWidth, indexHeight])
+    draw(index, 'DOCUMENT INDEX', MARGIN, indexHeight - MARGIN - 24, 21)
+    draw(index, 'Document', MARGIN, indexHeight - MARGIN - 62, 11)
+    draw(index, 'Start page', coverWidth - MARGIN - 65, indexHeight - MARGIN - 62, 11)
+    let rowY = indexHeight - MARGIN - 92
+    if (!indexRows.length) draw(index, 'No documents included (all requirements are optional).', MARGIN, rowY, 11)
+    for (const row of indexRows) {
+      if (row.image) {
+        const image = await output.embedPng(row.image.bytes)
+        index.drawImage(image, { x: MARGIN, y: rowY - row.height + row.image.baseline, width: row.image.width, height: row.image.height })
+      } else row.titleLines.forEach((line, i) => draw(index, line, MARGIN, rowY - i * 18, 12))
+      const pageNumber = String(row.startPage)
+      draw(index, pageNumber, coverWidth - MARGIN - textWidth(pageNumber, 12), rowY, 12)
+      rowY -= row.height + 14
+    }
+  }
+
   for (const r of included) {
     const file = files.find(f => f.id === matches[r.id].fileId)
     const source = await PDFDocument.load(file.bytes)
-    // Preserve visible filled form values before embedding page content.
+    // Preserve visible filled form values before copying page content.
     const form = source.getForm()
     if (form.getFields().length) form.flatten()
     const copiedPages = await output.copyPages(source, source.getPageIndices())
